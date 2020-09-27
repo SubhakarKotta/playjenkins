@@ -1,46 +1,60 @@
 pipeline {
-
-  environment {
-    registry = "192.168.1.81:5000/justme/myweb"
-    dockerImage = ""
-  }
-
-  agent any
-
-  stages {
-
-    stage('Checkout Source') {
-      steps {
-        git 'https://github.com/justmeandopensource/playjenkins.git'
-      }
-    }
-
-    stage('Build image') {
-      steps{
-        script {
-          dockerImage = docker.build registry + ":$BUILD_NUMBER"
+    agent {
+        kubernetes {
+            label 'kaniko'
+            yaml """
+kind: Pod
+metadata:
+  name: kaniko
+spec:
+  containers:
+  - name: golang
+    image: golang:1.12
+    command:
+    - cat
+    tty: true
+  - name: kaniko
+    image: gcr.io/kaniko-project/executor:debug
+    imagePullPolicy: Always
+    command:
+    - /busybox/cat
+    tty: true
+    volumeMounts:
+      - name: jenkins-docker-cfg
+        mountPath: /kaniko/.docker
+  volumes:
+  - name: jenkins-docker-cfg
+    projected:
+      sources:
+      - secret:
+          name: registry-credentials
+          items:
+            - key: .dockerconfigjson
+              path: config.json
+"""
         }
-      }
     }
-
-    stage('Push Image') {
-      steps{
-        script {
-          docker.withRegistry( "" ) {
-            dockerImage.push()
-          }
+    stages {
+        stage('Checkout') {
+            steps {
+                git 'https://github.com/SubhakarKotta/playjenkins.git'
+            }
         }
-      }
-    }
-
-    stage('Deploy App') {
-      steps {
-        script {
-          kubernetesDeploy(configs: "myweb.yaml", kubeconfigId: "mykubeconfig")
+     
+        stage('Make Image') {
+            environment {
+                PATH        = "/busybox:$PATH"
+                REGISTRY    = 'index.docker.io' // Configure your own registry
+                REPOSITORY  = 'subhakarkotta'
+                IMAGE       = 'test-jenkins'
+            }
+            steps {
+                container(name: 'kaniko', shell: '/busybox/sh') {
+                    sh '''#!/busybox/sh
+                    /kaniko/executor -f `pwd`/Dockerfile -c `pwd` --cache=true --destination=${REGISTRY}/${REPOSITORY}/${IMAGE}
+                    '''
+                }
+            }
         }
-      }
     }
-
-  }
-
 }
