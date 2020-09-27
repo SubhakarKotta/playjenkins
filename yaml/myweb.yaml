@@ -16,7 +16,7 @@ spec:
         app: myweb
     spec:
       containers:
-      - image: subhakarkotta/test-jenkins:latest
+      - image: subhakarkotta/test-jenkins
         imagePullPolicy: Always
         name: myweb
 
